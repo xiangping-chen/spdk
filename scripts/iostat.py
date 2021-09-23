@@ -12,9 +12,9 @@ SPDK_UPTIME = "/proc/uptime"
 
 SPDK_CPU_STAT_HEAD = ['cpu_stat:', 'user_stat', 'nice_stat',
                       'system_stat', 'iowait_stat', 'steal_stat', 'idle_stat']
-SPDK_BDEV_KB_STAT_HEAD = ['Device', 'tps', 'KB_read/s',
+SPDK_BDEV_KB_STAT_HEAD = ['Device', 'tps', 'io_latency(us)', 'KB_read/s',
                           'KB_wrtn/s', 'KB_dscd/s', 'KB_read', 'KB_wrtn', 'KB_dscd']
-SPDK_BDEV_MB_STAT_HEAD = ['Device', 'tps', 'MB_read/s',
+SPDK_BDEV_MB_STAT_HEAD = ['Device', 'tps', 'io_latency(us)', 'MB_read/s',
                           'MB_wrtn/s', 'MB_dscd/s', 'MB_read', 'MB_wrtn', 'MB_dscd']
 
 SPDK_MAX_SECTORS = 0xffffffff
@@ -202,9 +202,18 @@ def read_bdev_stat(last_stat, stat, mb, use_upt):
             tps = ((_stat.rd_ios + _stat.dc_ios + _stat.wr_ios) -
                    (_last_stat.rd_ios + _last_stat.dc_ios + _last_stat.wr_ios)) / upt
 
+            latency = ((_stat.rd_ticks + _stat.dc_ticks + _stat.wr_ticks) -
+                   (_last_stat.rd_ticks + _last_stat.dc_ticks + _last_stat.wr_ticks))/200
+
+            if tps > 0:
+                avg_latency = latency/(tps*upt)
+            else:
+                avg_latency = 0
+
             info_stat = [
                 _stat.bdev_name,
                 "{:.2f}".format(tps),
+                "{:.1f}".format(avg_latency),
                 "{:.2f}".format(
                     (_stat.rd_sectors - _last_stat.rd_sectors) / upt / unit),
                 "{:.2f}".format(
@@ -228,9 +237,16 @@ def read_bdev_stat(last_stat, stat, mb, use_upt):
                 upt = _stat.upt / upt_rate
 
             tps = (_stat.rd_ios + _stat.dc_ios + _stat.wr_ios) / upt
+
+            latency = (_stat.rd_ticks + _stat.dc_ticks + _stat.wr_ticks)/200
+            if tps > 0:
+                avg_latency = latency/(tps*upt)
+            else:
+                avg_latency = 0
             info_stat = [
                 _stat.bdev_name,
                 "{:.2f}".format(tps),
+                "{:.1f}".format(avg_latency),
                 "{:.2f}".format(_stat.rd_sectors / upt / unit),
                 "{:.2f}".format(_stat.wr_sectors / upt / unit),
                 "{:.2f}".format(_stat.dc_sectors / upt / unit),

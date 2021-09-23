@@ -39,6 +39,7 @@
 enum raid_level {
 	INVALID_RAID_LEVEL	= -1,
 	RAID0			= 0,
+	RAIDX			= 1,
 	RAID5			= 5,
 };
 

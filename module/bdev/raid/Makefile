@@ -32,19 +32,22 @@
 #
 
 SPDK_ROOT_DIR := $(abspath $(CURDIR)/../../..)
+SDC_SRC_DIR := $(SPDK_ROOT_DIR)/../ScaleIO/src/
+
 include $(SPDK_ROOT_DIR)/mk/spdk.common.mk
 
 SO_VER := 2
 SO_MINOR := 0
 
-CFLAGS += -I$(SPDK_ROOT_DIR)/lib/bdev/
-C_SRCS = bdev_raid.c bdev_raid_rpc.c raid0.c
+CFLAGS += -I$(SPDK_ROOT_DIR)/lib/bdev/ -I$(SDC_SRC_DIR) -I$(SDC_SRC_DIR)/libsdc_so
+C_SRCS = bdev_raid.c bdev_raid_rpc.c raid0.c raidx.c
 
 ifeq ($(CONFIG_RAID5),y)
 C_SRCS += raid5.c
 endif
 
 LIBNAME = bdev_raid
+LOCAL_SYS_LIBS = -lsdc
 
 SPDK_MAP_FILE = $(SPDK_ROOT_DIR)/mk/spdk_blank.map
 
