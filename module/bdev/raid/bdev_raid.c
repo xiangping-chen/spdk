@@ -868,6 +868,8 @@ static struct {
 } g_raid_level_names[] = {
 	{ "raid0", RAID0 },
 	{ "0", RAID0 },
+	{ "raidx", RAIDX },
+	{ "1", RAIDX },
 	{ "raid5", RAID5 },
 	{ "5", RAID5 },
 	{ }

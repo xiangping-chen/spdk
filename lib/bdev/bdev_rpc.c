@@ -193,9 +193,14 @@ rpc_bdev_get_iostat_cb(struct spdk_bdev *bdev,
 	struct rpc_bdev_get_iostat_ctx *ctx = cb_arg;
 	struct spdk_json_write_ctx *w = ctx->w;
 	const char *bdev_name;
+	uint64_t avg_rd_latency = 0;
 
 	if (rc != 0) {
 		goto done;
+	}
+
+	if (stat->num_read_ops > 0) {
+		avg_rd_latency = stat->read_latency_ticks/stat->num_read_ops/200;
 	}
 
 	bdev_name = spdk_bdev_get_name(bdev);
@@ -221,6 +226,8 @@ rpc_bdev_get_iostat_cb(struct spdk_bdev *bdev,
 		spdk_json_write_named_uint64(w, "write_latency_ticks", stat->write_latency_ticks);
 
 		spdk_json_write_named_uint64(w, "unmap_latency_ticks", stat->unmap_latency_ticks);
+
+		spdk_json_write_named_uint64(w, "avg_rd_latency_us", avg_rd_latency);
 
 		if (spdk_bdev_get_qd_sampling_period(bdev)) {
 			spdk_json_write_named_uint64(w, "queue_depth_polling_period",
