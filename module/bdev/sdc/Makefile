@@ -31,31 +31,21 @@
 #  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-SPDK_ROOT_DIR := $(abspath $(CURDIR)/../..)
+SPDK_ROOT_DIR := $(abspath $(CURDIR)/../../..)
+SDC_SRC_DIR := $(SPDK_ROOT_DIR)/../ScaleIO/src/
+
 include $(SPDK_ROOT_DIR)/mk/spdk.common.mk
 
-DIRS-y += delay error gpt lvol malloc null nvme passthru raid split zone_block sdc
+SO_VER := 3
+SO_MINOR := 0
 
-DIRS-$(CONFIG_CRYPTO) += crypto
+CFLAGS += -I$(SPDK_ROOT_DIR)/lib/bdev/ -I$(SDC_SRC_DIR) -I$(SDC_SRC_DIR)/libsdc_so -I$(SDC_SRC_DIR)/mos
 
-DIRS-$(CONFIG_OCF) += ocf
+C_SRCS = bdev_sdc.c bdev_sdc_rpc.c
+LIBNAME = bdev_sdc
 
-DIRS-$(CONFIG_REDUCE) += compress
+LOCAL_SYS_LIBS = -lsdc
 
-DIRS-$(CONFIG_URING) += uring
+SPDK_MAP_FILE = $(SPDK_ROOT_DIR)/mk/spdk_blank.map
 
-ifeq ($(OS),Linux)
-DIRS-y += aio ftl
-DIRS-$(CONFIG_ISCSI_INITIATOR) += iscsi
-DIRS-$(CONFIG_VIRTIO) += virtio
-DIRS-$(CONFIG_PMDK) += pmem
-endif
-
-DIRS-$(CONFIG_RBD) += rbd
-
-.PHONY: all clean $(DIRS-y)
-
-all: $(DIRS-y)
-clean: $(DIRS-y)
-
-include $(SPDK_ROOT_DIR)/mk/spdk.subdirs.mk
+include $(SPDK_ROOT_DIR)/mk/spdk.lib.mk
