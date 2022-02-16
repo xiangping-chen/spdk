@@ -50,26 +50,26 @@ static uint8_t libsdc_get_tgt(struct raid_bdev *raid_bdev, uint64_t LB_offset)
     uint64_t tgtId = 0;
     Ini_VolHandle *p_handle = (Ini_VolHandle *)raid_bdev->module_private;
 
-    uint64_t tsc = 0, tsc1=0;
-    static uint64_t latency = 0, cnt = 0;
+//    uint64_t tsc = 0, tsc1=0;
+//    static uint64_t latency = 0, cnt = 0;
 
-    tsc = spdk_get_ticks();
+//    tsc = spdk_get_ticks();
 
     tgtId = LibSdc_Ioctl_GetLBTgt(*p_handle, LB_offset);
 
-    tsc1= spdk_get_ticks();
-    latency += (tsc1 - tsc);
-    cnt ++;
-    if (cnt %100000 == 0) {
-    	SPDK_NOTICELOG ("avg latency %lu HZ\n", latency/cnt);
-    	latency = 0;
-    	cnt = 0;
-    }
+//    tsc1= spdk_get_ticks();
+//    latency += (tsc1 - tsc);
+//    cnt ++;
+//    if (cnt %100000 == 0) {
+//    	SPDK_NOTICELOG ("avg latency %lu HZ\n", latency/cnt);
+//    	latency = 0;
+//    	cnt = 0;
+//    }
 
 	tgt = tgtId & 0xFF;
     if (tgt >= raid_bdev->num_base_bdevs) {
     	SPDK_ERRLOG ("vol %s, LBA offset %lu, err get tgt %d\n", raid_bdev->bdev.name, LB_offset, tgt);
-    	tgt = 0;
+    	tgt = tgt % raid_bdev->num_base_bdevs;
     } else {
     	SPDK_DEBUGLOG ("vol %s, LBA offset %lu Tgt %d\n", raid_bdev->bdev.name, LB_offset, tgt);
     }
@@ -83,13 +83,13 @@ static int libsdc_init(struct raid_bdev *raid_bdev)
     LibSdc_Config sdcConfig;
     static int init = 0;
 
+    SPDK_NOTICELOG("Enter libsdc_init %d\n", init);
     if (init == 0) {
-    	SPDK_NOTICELOG("Enter libsdc, init %d\n", init);
     	memset(&sdcConfig, 0, sizeof (sdcConfig));
     	memset(&mdmAddress, 0, sizeof (mdmAddress));
 
     	LibSdc_ParseGuid("00000000-0000-0000-0000-000000000001", &guid);
-    	mdmAddress.ipv4 = LIBSDC_GENERATE_IPV4_ADDRESS(10, 228, 165, 120);
+    	mdmAddress.ipv4 = LIBSDC_GENERATE_IPV4_ADDRESS(10, 246, 67, 251);
     	mdmAddress.port = 6611;
     	LIBSDC_SO_CONFIG_SET_PARAM(&sdcConfig, guid, guid);
     	LIBSDC_SO_CONFIG_SET_PARAM(&sdcConfig, mdm, mdmAddress);
@@ -102,9 +102,8 @@ static int libsdc_init(struct raid_bdev *raid_bdev)
     		SPDK_NOTICELOG("Failed getting volume list in 30 seconds\n");
     		return -1;
     	}
-    	init = 1;
     }
-    SPDK_NOTICELOG("Exit libsdc, init %d\n", init);
+    SPDK_NOTICELOG("Exit libsdc_init %d\n", init++);
     return 0;
 }
 
@@ -309,29 +308,28 @@ static int raidx_start(struct raid_bdev *raid_bdev)
 
     const struct spdk_uuid * p_uuid = spdk_bdev_get_uuid(raid_bdev->base_bdev_info[0].bdev);
     spdk_uuid_fmt_lower(str2, sizeof(str2), p_uuid);
-  	SPDK_NOTICELOG ("base dev uuid %s\n", str2);
 
     raid_bdev->module_private = (void *)p_handle;
 
 	if (libsdc_init(raid_bdev) != 0 ) {
+	        SPDK_NOTICELOG ("libsdc init failed\n");
 		return 1;
 	}
-	pLast = LibSdc_GetVolumesLast();
+    pLast = LibSdc_GetVolumesLast();
+
     for (pFirst = LibSdc_GetVolumesFirst(); pFirst != pLast; pFirst++) {
-        // get which volume, and which offset
-        uint8_t tgt = 0;
-
         LibSdc_VolIdToString(pFirst->volId, str);
-
-        tsc = spdk_get_ticks();
-        tgt = libsdc_get_tgt(raid_bdev, 0);
-        tsc1= spdk_get_ticks();
-        latency = (tsc1 - tsc)/200;
-
-      	SPDK_NOTICELOG ("uuid %s vol id %s, init tgt %d, latency %lu us\n", str2, str, tgt, latency);
-
+	SPDK_NOTICELOG ("uuid %s vol id %s\n", str2, str);
         if (memcmp(&str[4], &str2[24], 12) == 0) {
-        	memcpy(raid_bdev->module_private, &pFirst->handle, sizeof (Ini_VolHandle));
+        	*p_handle = pFirst->handle;
+
+	 	 tsc = spdk_get_ticks();
+        	 libsdc_get_tgt(raid_bdev, 0);
+        	tsc1= spdk_get_ticks();
+        	latency = (tsc1 - tsc)/200;
+
+        	SPDK_NOTICELOG ("vol id %s handle %lx get_tgt latency %lu us\n", str, *(Ini_VolHandle *)raid_bdev->module_private, latency);
+
         	break;
         }
     }
