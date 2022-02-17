@@ -413,6 +413,25 @@ if __name__ == "__main__":
     p.add_argument('new_size', help='new bdev size for resize operation. The unit is MiB')
     p.set_defaults(func=bdev_null_resize)
 
+    def bdev_sdc_create(args):
+        print_json(rpc.bdev.bdev_sdc_create(args.client,
+                                               name=args.name,
+                                               uuid=args.uuid))
+    p = subparsers.add_parser('bdev_sdc_create', aliases=['construct_sdc_bdev'],
+                              help='Create a bdev with powerflex dev backend')
+    p.add_argument('name', help="Name of the bdev")
+    p.add_argument('-u', '--uuid', help="UUID of the bdev")
+    p.set_defaults(func=bdev_sdc_create)
+
+    def bdev_sdc_delete(args):
+        rpc.bdev.bdev_sdc_delete(args.client,
+                                    name=args.name)
+
+    p = subparsers.add_parser('bdev_sdc_delete', aliases=['delete_sdc_bdev'],
+                              help='Delete a sdc disk')
+    p.add_argument('name', help='sdc bdev name')
+    p.set_defaults(func=bdev_sdc_delete)
+
     def bdev_aio_create(args):
         print_json(rpc.bdev.bdev_aio_create(args.client,
                                             filename=args.filename,

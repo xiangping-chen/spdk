@@ -61,6 +61,7 @@ typedef struct sdc_task{
 	SimpleIoCtx 				libSdcCtx;
 	int							num_outstanding;
 	enum spdk_bdev_io_status	status;
+	struct sdc_channel 			*ch;
 	TAILQ_ENTRY(sdc_task)		tailq;
 } sdc_task, *Psdc_task;
 
@@ -158,7 +159,7 @@ static void
 sdc_libsdc_io_done(PLibSdc_IoCtx _pCtx, Mos_RC error)
 {
 	Psdc_task p_task = getWrapperFromIoCtx(_pCtx);
-	struct sdc_channel *ch = bdev_sdc_get_io_channel(&g_sdc_disks);
+	struct sdc_channel *ch = p_task->ch;
 
 	enum spdk_bdev_io_status status = mosErrorToEnosys(error);
 
@@ -187,9 +188,8 @@ static void sdc_set_libsdc_io_sgl(struct sdc_task *ptask,
 		struct iovec *iov, int iovcnt, size_t len, uint64_t offset, enum spdk_bdev_io_type ioType)
 {
 	PSimpleIoCtx myCtx = &(ptask->libSdcCtx);
-    uint32_t i = 0;
 
-    while(i < iovcnt)
+    for (uint32_t i=0; i < iovcnt; i++)
     {
     	myCtx->sg[i].buf = iov[i].iov_base;
         myCtx->sg[i].sizeInLB = iov[i].iov_len/512;
@@ -235,7 +235,7 @@ bdev_sdc_readv(struct sdc_disk *mdisk,
 		return;
 	}
 
-	SPDK_DEBUGLOG(bdev_sdc, "read %zu bytes from offset %#" PRIx64 ", iovcnt=%d\n",
+	SPDK_NOTICELOG("read %zu bytes from offset %#" PRIx64 ", iovcnt=%d\n",
 		      len, offset, iovcnt);
 
 	task->status = SPDK_BDEV_IO_STATUS_SUCCESS;
@@ -260,7 +260,7 @@ bdev_sdc_writev(struct sdc_disk *mdisk, struct sdc_task *task,
 		return;
 	}
 
-	SPDK_DEBUGLOG(bdev_sdc, "wrote %zu bytes to offset %#" PRIx64 ", iovcnt=%d\n",
+	SPDK_NOTICELOG("wrote %zu bytes to offset %#" PRIx64 ", iovcnt=%d\n",
 		      len, offset, iovcnt);
 
 	task->status = SPDK_BDEV_IO_STATUS_SUCCESS;
@@ -287,6 +287,9 @@ bdev_sdc_unmap(struct sdc_disk *mdisk,
 static int _bdev_sdc_submit_request(struct sdc_channel *mch, struct spdk_bdev_io *bdev_io)
 {
 	uint32_t block_size = bdev_io->bdev->blocklen;
+	struct sdc_task *task = (struct sdc_task *)bdev_io->driver_ctx;
+
+	task->ch = mch;
 
 	switch (bdev_io->type) {
 	case SPDK_BDEV_IO_TYPE_READ:
@@ -294,8 +297,7 @@ static int _bdev_sdc_submit_request(struct sdc_channel *mch, struct spdk_bdev_io
 			assert(bdev_io->u.bdev.iovcnt == 1);
 			bdev_io->u.bdev.iovs[0].iov_base = NULL;
 			bdev_io->u.bdev.iovs[0].iov_len = bdev_io->u.bdev.num_blocks * block_size;
-			sdc_complete_task((struct sdc_task *)bdev_io->driver_ctx, mch,
-					     SPDK_BDEV_IO_STATUS_SUCCESS);
+			sdc_complete_task(task, mch, SPDK_BDEV_IO_STATUS_SUCCESS);
 			return 0;
 		}
 
@@ -317,10 +319,6 @@ static int _bdev_sdc_submit_request(struct sdc_channel *mch, struct spdk_bdev_io
 		return 0;
 
 	case SPDK_BDEV_IO_TYPE_RESET:
-		sdc_complete_task((struct sdc_task *)bdev_io->driver_ctx, mch,
-				     SPDK_BDEV_IO_STATUS_SUCCESS);
-		return 0;
-
 	case SPDK_BDEV_IO_TYPE_FLUSH:
 		sdc_complete_task((struct sdc_task *)bdev_io->driver_ctx, mch,
 				     SPDK_BDEV_IO_STATUS_SUCCESS);
@@ -409,12 +407,17 @@ static const struct spdk_bdev_fn_table sdc_fn_table = {
 };
 
 int
-create_sdc_disk(struct spdk_bdev **bdev, const char *name, const struct spdk_uuid *uuid)
+bdev_sdc_create(struct spdk_bdev **bdev, const char *name, const struct spdk_uuid *uuid)
 {
 	struct sdc_disk	*mdisk;
 	int rc;
 	bool bFound = false;
     PLibSdc_Vol pFirst = NULL, pLast = NULL;
+
+    if (!name) {
+    	SPDK_ERRLOG("create_sdc_disk failed, dev name not specified\n");
+    	return -EINVAL;
+	}
 
 	mdisk = calloc(1, sizeof(*mdisk));
 	if (!mdisk) {
@@ -422,11 +425,12 @@ create_sdc_disk(struct spdk_bdev **bdev, const char *name, const struct spdk_uui
 		return -ENOMEM;
 	}
 
-	pLast = LibSdc_GetVolumesLast();
+    pLast = LibSdc_GetVolumesLast();
     for (pFirst = LibSdc_GetVolumesFirst(); pFirst != pLast; pFirst++) {
-    	int volId = atoi(name);
 
-        if (volId == pFirst->localId) {
+    	SPDK_NOTICELOG("bdev_sdc_create, input name %s, vol name %s\n", name, pFirst->localName);
+
+        if (!memcmp(name, pFirst->localName, strlen(name))) {
         	memcpy(&mdisk->sdc_handle, &pFirst->handle, sizeof (Ini_VolHandle));
 
         	mdisk->disk.blocklen = LB_SIZE_IN_BYTES;
@@ -436,6 +440,7 @@ create_sdc_disk(struct spdk_bdev **bdev, const char *name, const struct spdk_uui
         }
     }
     if (!bFound) {
+    	SPDK_ERRLOG("create_sdc_disk %s failed, vol not found\n", name);
     	free(mdisk);
     	return -EINVAL;
     }
@@ -463,6 +468,8 @@ create_sdc_disk(struct spdk_bdev **bdev, const char *name, const struct spdk_uui
 	mdisk->disk.fn_table = &sdc_fn_table;
 	mdisk->disk.module = &sdc_if;
 
+	SPDK_NOTICELOG("register disk, name %s\n", mdisk->disk.name);
+
 	rc = spdk_bdev_register(&mdisk->disk);
 	if (rc) {
 		sdc_disk_free(mdisk);
@@ -477,7 +484,7 @@ create_sdc_disk(struct spdk_bdev **bdev, const char *name, const struct spdk_uui
 }
 
 void
-delete_sdc_disk(struct spdk_bdev *bdev, spdk_delete_sdc_complete cb_fn, void *cb_arg)
+bdev_sdc_delete(struct spdk_bdev *bdev, spdk_delete_sdc_complete cb_fn, void *cb_arg)
 {
 	if (!bdev || bdev->module != &sdc_if) {
 		cb_fn(cb_arg, -ENODEV);
@@ -596,7 +603,7 @@ static int bdev_sdc_initialize(void)
         char 	str[SPDK_UUID_STRING_LEN];
         LibSdc_VolIdToString(pFirst->volId, str);
 
-      	SPDK_NOTICELOG ("vol %d id %s\n", pFirst->localId, str);
+      	SPDK_NOTICELOG ("vol %d, name %s, volId %s\n", pFirst->localId, pFirst->localName, str);
     }
 
 	return 0;

@@ -41,8 +41,8 @@
 
 typedef void (*spdk_delete_sdc_complete)(void *cb_arg, int bdeverrno);
 
-int create_sdc_disk(struct spdk_bdev **bdev, const char *name, const struct spdk_uuid *uuid);
+int bdev_sdc_create(struct spdk_bdev **bdev, const char *name, const struct spdk_uuid *uuid);
 
-void delete_sdc_disk(struct spdk_bdev *bdev, spdk_delete_sdc_complete cb_fn, void *cb_arg);
+void bdev_sdc_delete(struct spdk_bdev *bdev, spdk_delete_sdc_complete cb_fn, void *cb_arg);
 
 #endif /* SPDK_BDEV_SDC_H */

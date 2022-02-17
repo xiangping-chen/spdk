@@ -257,6 +257,34 @@ def bdev_malloc_delete(client, name):
     return client.call('bdev_malloc_delete', params)
 
 
+@deprecated_alias('construct_sdc_bdev')
+def bdev_sdc_create(client, name, uuid=None):
+    """Construct a sdc block device.
+
+    Args:
+        name: name of block device
+        uuid: UUID of block device (optional)
+
+    Returns:
+        Name of created sdc block device.
+    """
+    params = {'name': name}
+    if uuid:
+        params['uuid'] = uuid
+
+    return client.call('bdev_sdc_create', params)
+
+@deprecated_alias('delete_sdc_bdev')
+def bdev_sdc_delete(client, name):
+    """Delete sdc block device.
+
+    Args:
+        bdev_name: name of sdc bdev to delete
+    """
+    params = {'name': name}
+    return client.call('bdev_sdc_delete', params)
+
+
 @deprecated_alias('construct_null_bdev')
 def bdev_null_create(client, num_blocks, block_size, name, uuid=None, md_size=None,
                      dif_type=None, dif_is_head_of_md=None):

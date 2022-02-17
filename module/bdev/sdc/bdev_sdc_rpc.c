@@ -85,7 +85,8 @@ rpc_bdev_sdc_create(struct spdk_jsonrpc_request *request,
 		uuid = &decoded_uuid;
 	}
 
-	rc = create_sdc_disk(&bdev, req.name, uuid);
+	SPDK_NOTICELOG("rpc_bdev_sdc_create, dev name %s\n", req.name);
+	rc = bdev_sdc_create(&bdev, req.name, uuid);
 	if (rc) {
 		spdk_jsonrpc_send_error_response(request, rc, spdk_strerror(-rc));
 		goto cleanup;
@@ -149,7 +150,7 @@ rpc_bdev_sdc_delete(struct spdk_jsonrpc_request *request,
 		goto cleanup;
 	}
 
-	delete_sdc_disk(bdev, rpc_bdev_sdc_delete_cb, request);
+	bdev_sdc_delete(bdev, rpc_bdev_sdc_delete_cb, request);
 
 cleanup:
 	free_rpc_delete_sdc(&req);
