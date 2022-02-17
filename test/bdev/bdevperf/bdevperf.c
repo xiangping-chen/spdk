@@ -2136,6 +2136,7 @@ main(int argc, char **argv)
 	spdk_app_opts_init(&opts, sizeof(opts));
 	opts.name = "bdevperf";
 	opts.rpc_addr = NULL;
+	opts.reactor_mask = "0xFF";
 	opts.shutdown_cb = spdk_bdevperf_shutdown_cb;
 
 	if ((rc = spdk_app_parse_args(argc, argv, &opts, "Zzfq:o:t:w:k:CF:M:P:S:T:Xj:", NULL,
