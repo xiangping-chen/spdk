@@ -4,19 +4,15 @@
       "subsystem": "bdev",
       "config": [
         {
-          "method": "bdev_malloc_create",
+          "method": "bdev_sdc_create",
           "params": {
-            "name": "Malloc0",
-            "num_blocks": 102400,
-            "block_size": 512
+            "name": "scinia"
           }
         },
         {
-          "method": "bdev_malloc_create",
+          "method": "bdev_sdc_create",
           "params": {
-            "name": "Malloc1",
-            "num_blocks": 102400,
-            "block_size": 512
+            "name": "scinib"
           }
         }
       ]

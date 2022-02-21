@@ -2647,6 +2647,82 @@ Example response:
 }
 ~~~
 
+### bdev_sdc_create {#rpc_bdev_sdc_create}
+
+Construct @ref bdev_config_sdc
+
+#### Parameters
+
+Name                    | Optional | Type        | Description
+----------------------- | -------- | ----------- | -----------
+name                    | Required | string      | Bdev name to use
+uuid                    | Optional | string      | UUID of new bdev
+
+#### Result
+
+Name of newly created bdev.
+
+#### Example
+
+Example request:
+
+~~~json
+{
+  "params": {
+    "name": "scinia",
+    "uuid": "2b6601ba-eada-44fb-9a83-a20eb9eb9e90",
+  },
+  "jsonrpc": "2.0",
+  "method": "bdev_sdc_create",
+  "id": 1
+}
+~~~
+
+Example response:
+
+~~~json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": "scinia"
+}
+~~~
+
+### bdev_sdc_delete {#rpc_bdev_sdc_delete}
+
+Delete @ref bdev_config_sdc
+
+#### Parameters
+
+Name                    | Optional | Type        | Description
+----------------------- | -------- | ----------- | -----------
+name                    | Required | string      | Bdev name
+
+#### Example
+
+Example request:
+
+~~~json
+{
+  "params": {
+    "name": "scini"
+  },
+  "jsonrpc": "2.0",
+  "method": "bdev_sdc_delete",
+  "id": 1
+}
+~~~
+
+Example response:
+
+~~~json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": true
+}
+~~~
+
 ### bdev_null_create {#rpc_bdev_null_create}
 
 Construct @ref bdev_config_null

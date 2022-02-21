@@ -16,11 +16,11 @@ function create_job() {
 	cat <<- EOF >> "$testdir"/test.conf
 		${job}
 		filename=${filename}
-		bs=1024
+		bs=4096
 		rwmixread=70
 		rw=${rw}
-		iodepth=256
-		cpumask=0xff
+		iodepth=16
+		cpumask=0xf0
 	EOF
 }
 

@@ -60,6 +60,7 @@ struct sdc_disk {
 typedef struct sdc_task{
 	SimpleIoCtx 				libSdcCtx;
 	int							num_outstanding;
+	uint64_t 					offset;
 	enum spdk_bdev_io_status	status;
 	struct sdc_channel 			*ch;
 	TAILQ_ENTRY(sdc_task)		tailq;
@@ -68,6 +69,7 @@ typedef struct sdc_task{
 struct sdc_channel {
 //	struct spdk_io_channel		*accel_channel;
 	struct spdk_poller		*completion_poller;
+	pthread_mutex_t			mutex;
 	TAILQ_HEAD(, sdc_task)	completed_tasks;
 };
 
@@ -76,6 +78,10 @@ struct sdc_channel {
     const typeof(((type *)0)->member)*__mptr = (ptr);\
     (type *)((char *)__mptr - offsetof(type, member)); })
 
+#define MEM_ZERO_TYPED_PTR(pBlock) \
+{\
+    memset((pBlock), 0, sizeof(*(pBlock))); \
+}
 /**
  * Get wrapper pointer from inner Io Ctx.
  * @param pIoCtx
@@ -140,16 +146,18 @@ sdc_complete_task(struct sdc_task *task, struct sdc_channel *mch,
 		     enum spdk_bdev_io_status status)
 {
 	task->status = status;
+	pthread_mutex_lock(&mch->mutex);
 	TAILQ_INSERT_TAIL(&mch->completed_tasks, task, tailq);
+	pthread_mutex_unlock(&mch->mutex);
+
 }
 
 static int mosErrorToEnosys(Mos_RC rc) {
     switch (rc) {
         case 0:
         case LIBSDC_MOS_SUCCESS:
-        	return SPDK_BDEV_IO_STATUS_SUCCESS;
         case LIBSDC_MOS_ASYNC_SUCCESS:
-            return SPDK_BDEV_IO_STATUS_PENDING;
+        	return SPDK_BDEV_IO_STATUS_SUCCESS;
         default:
             return SPDK_BDEV_IO_STATUS_FAILED;
     }
@@ -162,6 +170,10 @@ sdc_libsdc_io_done(PLibSdc_IoCtx _pCtx, Mos_RC error)
 	struct sdc_channel *ch = p_task->ch;
 
 	enum spdk_bdev_io_status status = mosErrorToEnosys(error);
+
+//	SPDK_NOTICELOG("IO outstanding %d, status %d, io type %d, offset %#" PRIx64 ", length %d\n",
+//		      p_task->num_outstanding, p_task->status, p_task->libSdcCtx.ioType,
+//			  p_task->offset, p_task->libSdcCtx.sg[0].sizeInLB*512);
 
 	if (--p_task->num_outstanding == 0) {
 		sdc_complete_task(p_task, ch, status);
@@ -235,11 +247,12 @@ bdev_sdc_readv(struct sdc_disk *mdisk,
 		return;
 	}
 
-	SPDK_NOTICELOG("read %zu bytes from offset %#" PRIx64 ", iovcnt=%d\n",
-		      len, offset, iovcnt);
+//	SPDK_NOTICELOG("read %zu bytes from offset %#" PRIx64 ", iovcnt=%d\n",
+//		      len, offset, iovcnt);
 
 	task->status = SPDK_BDEV_IO_STATUS_SUCCESS;
 	task->num_outstanding = 1;
+	task->offset = offset;
 	sdc_set_libsdc_io_sgl(task, iov, iovcnt, len, offset, SPDK_BDEV_IO_TYPE_READ);
 
     rc = libsdcIO_Read(mdisk->sdc_handle, start_lb, LIBSDC_IO_FLAG__NONE, &(task->libSdcCtx.base));
@@ -260,8 +273,8 @@ bdev_sdc_writev(struct sdc_disk *mdisk, struct sdc_task *task,
 		return;
 	}
 
-	SPDK_NOTICELOG("wrote %zu bytes to offset %#" PRIx64 ", iovcnt=%d\n",
-		      len, offset, iovcnt);
+//	SPDK_NOTICELOG("wrote %zu bytes to offset %#" PRIx64 ", iovcnt=%d\n",
+//		      len, offset, iovcnt);
 
 	task->status = SPDK_BDEV_IO_STATUS_SUCCESS;
 	task->num_outstanding = 1;
@@ -503,7 +516,9 @@ sdc_completion_poller(void *ctx)
 	uint32_t num_completions = 0;
 
 	TAILQ_INIT(&completed_tasks);
+	pthread_mutex_lock(&ch->mutex);
 	TAILQ_SWAP(&completed_tasks, &ch->completed_tasks, sdc_task, tailq);
+	pthread_mutex_unlock(&ch->mutex);
 
 	while (!TAILQ_EMPTY(&completed_tasks)) {
 		task = TAILQ_FIRST(&completed_tasks);
@@ -525,7 +540,7 @@ sdc_create_channel_cb(void *io_device, void *ctx)
 		SPDK_ERRLOG("Failed to register sdc completion poller\n");
 		return -ENOMEM;
 	}
-
+	pthread_mutex_init(&ch->mutex, NULL);
 	TAILQ_INIT(&ch->completed_tasks);
 
 	return 0;
@@ -544,21 +559,30 @@ sdc_destroy_channel_cb(void *io_device, void *ctx)
 
 static int sdc_libsdc_init()
 {
-    LibSdc_Guid guid;
-    LibSdc_NetAddress mdmAddress;
-    LibSdc_Config sdcConfig;
-    static int init = 0;
+    LibSdc_Guid 		guid;
+    LibSdc_NetAddress 	mdmAddress;
+    LibSdc_PrereqConfig	initConfig;
+    LibSdc_Config 		sdcConfig;
+    static int 			init = 0;
 
     if (init == 0) {
+    	char * confFile = "/home/ubuntu/drv_cfg.txt";
     	SPDK_NOTICELOG("Enter libsdc, init %d\n", init);
-    	memset(&sdcConfig, 0, sizeof (sdcConfig));
-    	memset(&mdmAddress, 0, sizeof (mdmAddress));
+        MEM_ZERO_TYPED_PTR(&sdcConfig);
+        MEM_ZERO_TYPED_PTR(&initConfig);
+        MEM_ZERO_TYPED_PTR(&mdmAddress);
 
     	LibSdc_ParseGuid("00000000-0000-0000-0000-000000000001", &guid);
     	mdmAddress.ipv4 = LIBSDC_GENERATE_IPV4_ADDRESS(10, 246, 67, 251);
     	mdmAddress.port = 6611;
     	LIBSDC_SO_CONFIG_SET_PARAM(&sdcConfig, guid, guid);
     	LIBSDC_SO_CONFIG_SET_PARAM(&sdcConfig, mdm, mdmAddress);
+
+        printf("parse conf %s\n", confFile);
+        if (!LibSdc_InitConf(&sdcConfig, 0, 0, confFile)) {
+            printf("Error parsing conf\n");
+            return -1;
+        }
 
     	/*
     	 * BOOL LibSdc_InitSimple(
@@ -567,7 +591,7 @@ static int sdc_libsdc_init()
     	        LibSdc_ReadCb readCb, LibSdc_WriteCb writeCb, LibSdc_ConnectCb connectCb) {
     	 *
     	 */
-    	if (!LibSdc_InitSimple(NULL, &sdcConfig, sdc_libsdc_io_done, sdc_libsdc_io_done, NULL)) {
+    	if (!LibSdc_InitSimple(&initConfig, &sdcConfig, sdc_libsdc_io_done, sdc_libsdc_io_done, NULL)) {
     		SPDK_NOTICELOG("Failed libsdc init\n");
     		return -1;
     	}
